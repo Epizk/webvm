@@ -4,51 +4,45 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale-1.0">
     <title>ig0 webvm</title>
-    
-    <!-- LOAD EMULATOR (Stable Version) -->
-    <script src="https://unpkg.com/v86@0.2.1/build/libv86.js"></script>
-
     <style>
-        /* Only essential CSS for the emulator screen size */
-        #screen_container {
-            display: none; /* Hidden until started */
-            width: 720px;
-            height: 400px;
-            border: 1px solid #000;
-            background-color: #000;
+        /* Floating Scrollbar CSS */
+        ::-webkit-scrollbar {
+            width: 16px;
+        }
+        ::-webkit-scrollbar-track {
+            background-color: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: rgba(0, 0, 0, 0.3);
+            border-radius: 20px;
+            border: 5px solid transparent;
+            background-clip: content-box;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: rgba(0, 0, 0, 0.6);
         }
 
-        /* Ensure the canvas fills the container */
-        #screen_container canvas {
-            display: block;
-            width: 100%;
-            height: 100%;
+        /* Functional CSS for Pseudo-Fullscreen Fallback */
+        .pseudo-fullscreen {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 99999 !important;
+            background-color: black !important;
+            border: none !important;
+            margin: 0 !important;
         }
 
-        #system-log {
-            width: 100%;
-            height: 150px;
-            background: #f0f0f0;
-            border: 1px solid #ccc;
-            font-family: monospace;
-            font-size: 12px;
-            overflow-y: scroll;
-            margin-top: 20px;
-            padding: 5px;
-        }
-
-        fieldset {
-            margin-bottom: 15px;
-            border: 1px solid #ccc;
+        /* Error/Status styling */
+        .error-box {
+            background: #ffcccc;
+            border: 1px solid red;
             padding: 10px;
-        }
-
-        legend {
+            color: #cc0000;
             font-weight: bold;
-        }
-
-        .setting-row {
-            margin-bottom: 8px;
+            display: none;
         }
     </style>
 </head>
@@ -58,238 +52,313 @@
     <p>x86 Virtual Machine / Browser-based</p>
     <hr>
     
-    <!-- DRIVES SECTION -->
-    <fieldset>
-        <legend>1. Drives</legend>
-        <div class="setting-row">
-            <label>CD-ROM Image (.iso):</label><br>
-            <input type="file" id="iso-file" accept=".iso">
-        </div>
-        <div class="setting-row">
-            <label>Floppy Image (.img) [Optional]:</label><br>
-            <input type="file" id="floppy-file" accept=".img">
-        </div>
-    </fieldset>
-
-    <!-- HARDWARE SETTINGS -->
-    <fieldset>
-        <legend>2. Hardware Settings</legend>
-        
-        <div class="setting-row">
-            <label for="ram-select">System Memory (RAM):</label>
-            <select id="ram-select">
-                <option value="67108864">64 MB</option>
-                <option value="134217728" selected>128 MB (Recommended)</option>
-                <option value="268435456">256 MB</option>
-                <option value="536870912">512 MB (May be slow)</option>
-            </select>
-        </div>
-
-        <div class="setting-row">
-            <label for="vram-select">Video Memory (VRAM):</label>
-            <select id="vram-select">
-                <option value="2097152">2 MB</option>
-                <option value="4194304">4 MB</option>
-                <option value="8388608" selected>8 MB</option>
-                <option value="16777216">16 MB</option>
-            </select>
-        </div>
-
-        <div class="setting-row">
-            <label for="boot-order">Boot Priority:</label>
-            <select id="boot-order">
-                <option value="213">CD-ROM / Hard Drive / Floppy</option>
-                <option value="312">CD-ROM / Floppy / Hard Drive</option>
-                <option value="123">Floppy / CD-ROM / Hard Drive</option>
-            </select>
-        </div>
-    </fieldset>
+    <!-- NETWORK DEBUGGING -->
+    <h3>System Loader</h3>
+    <div id="loader-status">Initializing...</div>
+    <div id="error-display" class="error-box"></div>
+    <br>
     
-    <!-- CONTROLS -->
-    <div>
-        <label>3. Action:</label><br>
-        <button id="start-button" disabled>Load Engine...</button>
-        <button id="stop-button" disabled>Stop VM</button>
+    <!-- Manual Override Controls -->
+    <details>
+        <summary>Advanced / Manual Load</summary>
+        <br>
+        <button onclick="loadScript('unpkg')">Retry Main (UNPKG)</button>
+        <button onclick="loadScript('jsdelivr')">Retry Backup (jsDelivr)</button>
+        <br><br>
+        <label>Custom CDN URL (libv86.js):</label><br>
+        <input type="text" id="custom-cdn-url" placeholder="https://example.com/libv86.js" style="width: 300px;">
+        <button onclick="loadCustomScript()">Load Custom</button>
+    </details>
+    <hr>
+
+    <!-- MAIN INTERFACE -->
+    <div id="main-interface">
+        
+        <h3>1. Boot Media</h3>
+        <label>CD-ROM Image (.iso):</label>
+        <input type="file" id="iso-file" accept=".iso">
+        <br><br>
+        <label>Floppy Image (.img):</label>
+        <input type="file" id="floppy-file" accept=".img">
+        <br><br>
+
+        <h3>2. Hardware</h3>
+        <label>Memory (RAM):</label>
+        <select id="ram-select">
+            <option value="67108864">64 MB</option>
+            <option value="134217728" selected>128 MB (Recommended)</option>
+            <option value="268435456">256 MB</option>
+        </select>
+        <br><br>
+        <label>Boot Order:</label>
+        <select id="boot-order">
+            <option value="213">CD-ROM / Hard Drive / Floppy</option>
+            <option value="312">CD-ROM / Floppy / Hard Drive</option>
+            <option value="123">Floppy / CD-ROM / Hard Drive</option>
+        </select>
+        <br><br>
+        
+        <h3>3. Controls</h3>
+        <button id="start-button" disabled>Start Machine</button>
+        <button id="stop-button" disabled>Stop</button>
         <button id="fullscreen-button" disabled>Fullscreen</button>
+        <br><br>
+
+        <div id="status-area">Status: Waiting for library to load...</div>
+        <br>
+        
+        <!-- Functional styles only: Width/Height required for canvas -->
+        <div id="screen_container" style="display: none; width: 720px; height: 400px; background-color: black; border: 1px solid black;">
+            <div style="white-space: pre; font: 14px monospace; line-height: 14px"></div>
+            <canvas style="display: none; width: 100%; height: 100%; display: block;"></canvas>
+        </div>
     </div>
 
     <br>
-    <div id="status-area">System: Waiting for library...</div>
-    <br>
+    <label>System Log:</label><br>
+    <textarea id="system-log" rows="10" cols="80" readonly></textarea>
 
-    <!-- VM SCREEN -->
-    <div id="screen_container">
-        <div style="white-space: pre; font: 14px monospace; line-height: 14px"></div>
-        <canvas style="display: none"></canvas>
-    </div>
-
-    <!-- DEBUG LOG -->
-    <textarea id="system-log" readonly></textarea>
-
+    <!-- APP LOGIC -->
     <script>
+        // --- DOM Elements ---
         const startBtn = document.getElementById('start-button');
         const stopBtn = document.getElementById('stop-button');
         const fullBtn = document.getElementById('fullscreen-button');
         const isoInput = document.getElementById('iso-file');
         const floppyInput = document.getElementById('floppy-file');
         const ramSelect = document.getElementById('ram-select');
-        const vramSelect = document.getElementById('vram-select');
         const bootSelect = document.getElementById('boot-order');
         const screen = document.getElementById('screen_container');
         const statusArea = document.getElementById('status-area');
         const sysLog = document.getElementById('system-log');
-        
+        const loaderStatus = document.getElementById('loader-status');
+        const errorDisplay = document.getElementById('error-display');
+        const customUrlInput = document.getElementById('custom-cdn-url');
+
         let emulator = null;
+        let currentCDN = '';
 
-        function log(msg) {
+        // --- Logger ---
+        function log(msg, type = 'info') {
             const time = new Date().toLocaleTimeString();
-            sysLog.value += `[${time}] ${msg}\n`;
+            let prefix = '[INFO]';
+            if (type === 'error') prefix = '[ERROR]';
+            if (type === 'sys') prefix = '[SYSTEM]';
+            
+            sysLog.value += `${prefix} ${time}: ${msg}\n`;
             sysLog.scrollTop = sysLog.scrollHeight;
+            console.log(prefix, msg);
         }
 
-        // --- 1. Library Loader Check ---
-        function checkLib() {
-            if (typeof window.V86Starter !== 'undefined') {
-                statusArea.innerText = "System: Engine Ready. Configure settings and start.";
-                startBtn.innerText = "Start System";
-                startBtn.disabled = false;
-                log("Library V86Starter loaded successfully.");
-            } else {
-                setTimeout(checkLib, 500);
+        // --- Dynamic Script Loader ---
+        function loadScript(source, customUrl = null) {
+            // Cleanup previous attempts
+            const oldScript = document.getElementById('v86-script');
+            if (oldScript) oldScript.remove();
+            errorDisplay.style.display = 'none';
+
+            let url = '';
+            
+            // Source Selection Logic
+            if (customUrl) {
+                url = customUrl;
+                // Attempt to guess base path from custom URL
+                try {
+                    currentCDN = url.substring(0, url.lastIndexOf('/'));
+                    // If it ends in /build, strip it to match structure
+                    if (currentCDN.endsWith('/build')) currentCDN = currentCDN.replace('/build', '');
+                } catch(e) { currentCDN = ''; }
             }
-        }
-        
-        log("Checking for v86 library...");
-        checkLib();
+            else if (source === 'unpkg') {
+                url = 'https://unpkg.com/v86@0.2.1/build/libv86.js';
+                currentCDN = 'https://unpkg.com/v86@0.2.1';
+            } else if (source === 'jsdelivr') {
+                url = 'https://cdn.jsdelivr.net/npm/v86@0.2.1/build/libv86.js';
+                currentCDN = 'https://cdn.jsdelivr.net/npm/v86@0.2.1';
+            } else if (source === 'esm') {
+                // Third backup: esm.sh (usually allows CORs)
+                url = 'https://esm.sh/v86@0.2.1/build/libv86.js';
+                currentCDN = 'https://esm.sh/v86@0.2.1';
+            }
 
-        // --- 2. Start Logic ---
+            loaderStatus.innerHTML = `Attempting to load from <b>${source || 'Custom'}</b>...`;
+            log(`Fetching library from: ${url}`, 'sys');
+
+            const script = document.createElement('script');
+            script.src = url;
+            script.id = 'v86-script';
+            
+            script.onload = () => {
+                loaderStatus.innerHTML = '<span style="color:green">Library Loaded Successfully!</span>';
+                log("Library (libv86.js) loaded.", 'sys');
+                enableInterface();
+            };
+
+            script.onerror = () => {
+                log(`Failed to load script from ${source || 'Custom'}.`, 'error');
+                
+                // AUTO-RETRY CASCADE
+                if (source === 'unpkg') {
+                    loaderStatus.innerHTML = 'UNPKG failed. Trying Backup 1 (jsDelivr)...';
+                    loadScript('jsdelivr');
+                } else if (source === 'jsdelivr') {
+                    loaderStatus.innerHTML = 'jsDelivr failed. Trying Backup 2 (esm.sh)...';
+                    loadScript('esm');
+                } else {
+                    // All failed
+                    loaderStatus.innerHTML = '<span style="color:red">ALL SOURCES FAILED.</span>';
+                    errorDisplay.innerHTML = `
+                        CRITICAL FAILURE: Could not load emulator.<br>
+                        1. Disable AdBlocker (uBlock, etc) for this page.<br>
+                        2. You might be on a restricted network (School/Work).<br>
+                        3. Try pasting a custom URL below if you have one.
+                    `;
+                    errorDisplay.style.display = 'block';
+                }
+            };
+
+            document.body.appendChild(script);
+        }
+
+        function loadCustomScript() {
+            const url = customUrlInput.value.trim();
+            if (!url) { alert("Please enter a URL."); return; }
+            loadScript(null, url);
+        }
+
+        function enableInterface() {
+            statusArea.innerText = "Status: Ready. Select ISO and Start.";
+            startBtn.disabled = false;
+            
+            // Warm up cache (try/catch because CORS might block fetch even if script loaded)
+            const wasmUrl = currentCDN + "/build/v86.wasm";
+            log(`Pre-fetching WASM: ${wasmUrl}`, 'sys');
+            fetch(wasmUrl).catch(e => log("Pre-fetch note: " + e.message + " (This is normal if cross-origin)", 'sys'));
+        }
+
+        // --- Start Emulator ---
         startBtn.onclick = function() {
-            // Basic validation
             if (!isoInput.files.length && !floppyInput.files.length) {
-                statusArea.innerText = "ERROR: Please select at least one drive image (ISO or Floppy).";
-                log("Error: No boot media selected.");
+                alert("Please select an ISO file first.");
                 return;
             }
+
+            log("Starting VM sequence...", 'sys');
             
-            // Lock UI
+            // UI State
             startBtn.disabled = true;
             stopBtn.disabled = false;
             fullBtn.disabled = false;
-            isoInput.disabled = true;
-            floppyInput.disabled = true;
-            ramSelect.disabled = true;
-            vramSelect.disabled = true;
-            bootSelect.disabled = true;
-            
             screen.style.display = 'block';
-            statusArea.innerText = "System: Initializing Virtual Machine...";
+            statusArea.innerText = "Status: Booting...";
 
             try {
-                // Prepare config object
+                // Construct config with fallback logic for BIOS paths
                 const config = {
-                    wasm_path: "https://unpkg.com/v86@0.2.1/build/v86.wasm",
+                    wasm_path: currentCDN + "/build/v86.wasm",
                     memory_size: parseInt(ramSelect.value),
-                    vga_memory_size: parseInt(vramSelect.value),
+                    vga_memory_size: 8 * 1024 * 1024,
                     screen_container: screen,
-                    bios: { url: "https://unpkg.com/v86@0.2.1/bios/seabios.bin" },
-                    vga_bios: { url: "https://unpkg.com/v86@0.2.1/bios/vgabios.bin" },
+                    bios: { url: currentCDN + "/bios/seabios.bin" },
+                    vga_bios: { url: currentCDN + "/bios/vgabios.bin" },
                     boot_order: parseInt(bootSelect.value),
                     autostart: true
                 };
 
-                // Add ISO if present
                 if (isoInput.files.length) {
                     config.cdrom = { url: URL.createObjectURL(isoInput.files[0]) };
-                    log(`Mounting CD-ROM: ${isoInput.files[0].name}`);
+                    log("Attached CD-ROM: " + isoInput.files[0].name);
                 }
-
-                // Add Floppy if present
                 if (floppyInput.files.length) {
                     config.fda = { url: URL.createObjectURL(floppyInput.files[0]) };
-                    log(`Mounting Floppy: ${floppyInput.files[0].name}`);
+                    log("Attached Floppy: " + floppyInput.files[0].name);
                 }
 
-                log(`Settings: RAM=${config.memory_size / 1024 / 1024}MB, VRAM=${config.vga_memory_size / 1024 / 1024}MB`);
-                log("Initializing V86Starter...");
-                
-                // Initialize v86
                 emulator = new window.V86Starter(config);
 
-                // Listeners
-                emulator.add_listener("download-progress", function(e) {
-                    const prog = Math.round((e.loaded / e.total) * 100);
-                    if (!isNaN(prog)) {
-                        statusArea.innerText = "System: Downloading Engine Core... " + prog + "%";
-                        if (prog % 20 === 0) log(`Download progress: ${prog}%`);
+                emulator.add_listener("emulator-ready", () => {
+                    statusArea.innerText = "Status: Running";
+                    log("VM is ready and running.", 'sys');
+                });
+
+                emulator.add_listener("download-progress", (e) => {
+                    const percent = Math.round(e.loaded / e.total * 100);
+                    if(!isNaN(percent) && percent % 20 === 0) {
+                        statusArea.innerText = `Status: Downloading Engine... ${percent}%`;
                     }
                 });
 
-                emulator.add_listener("emulator-ready", function() {
-                    statusArea.innerText = "System: VM RUNNING. Click screen to capture mouse (Esc to exit).";
-                    log("Event: emulator-ready. System is live.");
-                });
-                
-                emulator.add_listener("emulator-stopped", function() {
-                    statusArea.innerText = "System: VM HALTED.";
-                    log("Event: emulator-stopped.");
-                });
-
-            } catch (err) {
-                statusArea.innerText = "CRITICAL ERROR: " + err.message;
-                log("CRITICAL EXCEPTION: " + err.message);
-                console.error(err);
-                resetUI();
+            } catch (e) {
+                log(e.message, 'error');
+                statusArea.innerText = "Status: Error (Check Logs)";
             }
         };
 
-        // --- 3. Stop Logic ---
+        // --- Stop ---
         stopBtn.onclick = function() {
-            log("User requested stop.");
             if (emulator) {
-                try {
-                    emulator.stop();
-                    emulator.destroy();
-                } catch(e) {
-                    log("Error during stop: " + e.message);
-                }
+                emulator.stop();
+                emulator.destroy();
                 emulator = null;
+                log("VM Stopped manually.", 'sys');
             }
-            resetUI();
-        };
-
-        // --- 4. Fullscreen Logic ---
-        fullBtn.onclick = function() {
-            if (!screen) return;
-            
-            if (screen.requestFullscreen) {
-                screen.requestFullscreen();
-            } else if (screen.mozRequestFullScreen) { /* Firefox */
-                screen.mozRequestFullScreen();
-            } else if (screen.webkitRequestFullscreen) { /* Chrome, Safari & Opera */
-                screen.webkitRequestFullscreen();
-            } else if (screen.msRequestFullscreen) { /* IE/Edge */
-                screen.msRequestFullscreen();
-            }
-        };
-
-        function resetUI() {
+            screen.style.display = 'none';
+            screen.classList.remove('pseudo-fullscreen'); // Ensure we exit fullscreen on stop
+            screen.innerHTML = '<div style="white-space: pre; font: 14px monospace; line-height: 14px"></div><canvas style="display: none; width: 100%; height: 100%; display: block;"></canvas>';
             startBtn.disabled = false;
             stopBtn.disabled = true;
             fullBtn.disabled = true;
-            isoInput.disabled = false;
-            floppyInput.disabled = false;
-            ramSelect.disabled = false;
-            vramSelect.disabled = false;
-            bootSelect.disabled = false;
+            statusArea.innerText = "Status: Stopped";
+        };
+
+        // --- Robust Fullscreen Logic ---
+        fullBtn.onclick = function() {
+            if(!screen) return;
             
-            screen.style.display = 'none';
-            screen.innerHTML = '<div style="white-space: pre; font: 14px monospace; line-height: 14px"></div><canvas style="display: none"></canvas>';
-            
-            if (!statusArea.innerText.includes("ERROR")) {
-                statusArea.innerText = "System: Halted. Ready for new session.";
+            // 1. Try Standard Fullscreen API
+            let p;
+            try {
+                if (screen.requestFullscreen) p = screen.requestFullscreen();
+                else if (screen.webkitRequestFullscreen) p = screen.webkitRequestFullscreen();
+                else if (screen.mozRequestFullScreen) p = screen.mozRequestFullScreen();
+                else if (screen.msRequestFullscreen) p = screen.msRequestFullscreen();
+            } catch (err) {
+                log("Native fullscreen error: " + err.message, 'error');
             }
-            log("UI Reset.");
+
+            // 2. Handle Promise Rejections (e.g. Permissions Policy)
+            if (p && p instanceof Promise) {
+                p.catch(err => {
+                    log("Native fullscreen blocked (" + err.message + "). Switching to CSS fallback.", 'error');
+                    togglePseudoFullscreen();
+                });
+            } else if (!p) {
+                // API not supported or didn't return promise
+                togglePseudoFullscreen();
+            }
+        };
+
+        function togglePseudoFullscreen() {
+            if (screen.classList.contains('pseudo-fullscreen')) {
+                screen.classList.remove('pseudo-fullscreen');
+            } else {
+                screen.classList.add('pseudo-fullscreen');
+                alert("Fullscreen Mode (Fallback). Press ESC to exit.");
+            }
         }
+
+        // Listen for ESC key to exit pseudo-fullscreen
+        document.addEventListener('keydown', function(e) {
+            if (e.key === "Escape" && screen.classList.contains('pseudo-fullscreen')) {
+                screen.classList.remove('pseudo-fullscreen');
+            }
+        });
+
+        // --- Auto Init ---
+        // Try unpkg first automatically
+        log("Auto-attempting load from UNPKG...", 'sys');
+        loadScript('unpkg');
+
     </script>
 </body>
 </html>
