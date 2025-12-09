@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale-1.0">
+    <title>ig0 webvm</title>
+    
+    <!-- LOAD EMULATOR (Stable Version) -->
+    <script src="https://unpkg.com/v86@0.2.1/build/libv86.js"></script>
+
+    <style>
+        /* Only essential CSS for the emulator screen size */
+        #screen_container {
+            display: none; /* Hidden until started */
+            width: 720px;
+            height: 400px;
+            border: 1px solid #000; /* Simple border to show where screen is */
+        }
+
+        /* Ensure the canvas fills the container */
+        #screen_container canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>ig0 webvm</h1>
+    <p>x86 Virtual Machine / Browser-based</p>
+    <hr>
+    
+    <div>
+        <label>1. Select ISO Image:</label><br>
+        <input type="file" id="iso-file" accept=".iso"><br>
+        <br>
+        
+        <label>2. Action:</label><br>
+        <button id="start-button" disabled>Load Engine...</button>
+        <button id="stop-button" disabled>Stop VM</button>
+    </div>
+
+    <br>
+    <div id="status-area">System: Waiting for library...</div>
+    <br>
+
+    <!-- VM SCREEN -->
+    <div id="screen_container">
+        <div style="white-space: pre; font: 14px monospace; line-height: 14px"></div>
+        <canvas style="display: none"></canvas>
+    </div>
+
+    <script>
+        const startBtn = document.getElementById('start-button');
+        const stopBtn = document.getElementById('stop-button');
+        const fileInput = document.getElementById('iso-file');
+        const screen = document.getElementById('screen_container');
+        const statusArea = document.getElementById('status-area');
+        
+        let emulator = null;
+
+        // --- 1. Library Loader Check ---
+        function checkLib() {
+            if (typeof window.V86Starter !== 'undefined') {
+                statusArea.innerText = "System: Engine Ready. Select ISO to boot.";
+                startBtn.innerText = "Start System";
+                startBtn.disabled = false;
+            } else {
+                setTimeout(checkLib, 500);
+            }
+        }
+        checkLib();
+
+        // --- 2. Start Logic ---
+        startBtn.onclick = function() {
+            if (!fileInput.files.length) {
+                statusArea.innerText = "ERROR: No ISO file selected.";
+                return;
+            }
+
+            const file = fileInput.files[0];
+            
+            // Switch UI State
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            fileInput.disabled = true;
+            screen.style.display = 'block';
+            statusArea.innerText = "System: Initializing Virtual Machine (256MB RAM)...";
+
+            try {
+                // Initialize v86
+                emulator = new window.V86Starter({
+                    // Specific stable WASM path matching the script version
+                    wasm_path: "https://unpkg.com/v86@0.2.1/build/v86.wasm",
+                    
+                    memory_size: 256 * 1024 * 1024, // 256MB RAM
+                    vga_memory_size: 8 * 1024 * 1024,
+                    screen_container: screen,
+                    
+                    bios: { url: "https://unpkg.com/v86@0.2.1/bios/seabios.bin" },
+                    vga_bios: { url: "https://unpkg.com/v86@0.2.1/bios/vgabios.bin" },
+                    
+                    cdrom: { url: URL.createObjectURL(file) },
+                    
+                    autostart: true
+                });
+
+                // Listeners
+                emulator.add_listener("download-progress", function(e) {
+                    const prog = Math.round((e.loaded / e.total) * 100);
+                    if (!isNaN(prog)) {
+                        statusArea.innerText = "System: Downloading Engine Core... " + prog + "%";
+                    }
+                });
+
+                emulator.add_listener("emulator-ready", function() {
+                    statusArea.innerText = "System: VM RUNNING. Click screen to capture mouse (Esc to exit).";
+                });
+                
+                emulator.add_listener("emulator-stopped", function() {
+                    statusArea.innerText = "System: VM HALTED.";
+                });
+
+            } catch (err) {
+                statusArea.innerText = "CRITICAL ERROR: " + err.message;
+                resetUI();
+            }
+        };
+
+        // --- 3. Stop Logic ---
+        stopBtn.onclick = function() {
+            if (emulator) {
+                emulator.stop();
+                emulator.destroy();
+                emulator = null;
+            }
+            resetUI();
+        };
+
+        function resetUI() {
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            fileInput.disabled = false;
+            screen.style.display = 'none';
+            // Clear screen content manually
+            screen.innerHTML = '<div style="white-space: pre; font: 14px monospace; line-height: 14px"></div><canvas style="display: none"></canvas>';
+            if (!statusArea.innerText.includes("ERROR")) {
+                statusArea.innerText = "System: Halted. Ready for new session.";
+            }
+        }
+    </script>
+</body>
+</html>
